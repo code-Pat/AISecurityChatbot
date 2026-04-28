@@ -48,11 +48,17 @@ struct ContentView: View {
         messages.append((role: "user", content: userInput))
         isLoading = true
         
+        // 빈 assistant 메시지 먼저 추가
+        messages.append((role: "assistant", content: ""))
+        let assistantIndex = messages.count - 1
+        
         do {
-            let reply = try await service.sendMessage(userInput)
-            messages.append((role: "assistant", content: reply))
+            let stream = try await service.sendMessageStream(userInput)
+            for try await chunk in stream {
+                messages[assistantIndex].content += chunk
+            }
         } catch {
-            messages.append((role: "assistant", content: "에러 발생: \(error.localizedDescription)"))
+            messages[assistantIndex].content = "에러 발생: \(error.localizedDescription)"
         }
         isLoading = false
     }
