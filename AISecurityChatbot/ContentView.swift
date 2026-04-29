@@ -42,6 +42,11 @@ struct ContentView: View {
                     Task { await sendStructured() }
                 }
                 .disabled(isLoading || inputText.isEmpty)
+                
+                Button("RAG 모드") {
+                    Task { await sendWithRAG() }
+                }
+                .disabled(isLoading || inputText.isEmpty)
             }
             .padding()
         }
@@ -79,6 +84,28 @@ struct ContentView: View {
         do {
             let reply = try await service.askStructured(userInput)
             messages[assistantIndex].content = reply
+        } catch {
+            messages[assistantIndex].content = "에러 발생: \(error.localizedDescription)"
+        }
+        isLoading = false
+    }
+    
+    func sendWithRAG() async {
+        let userInput = inputText
+        inputText = ""
+        messages.append((role: "user", content: userInput))
+        isLoading = true
+        messages.append((role: "assistant", content: ""))
+        let assistantIndex = messages.count - 1
+        
+        let ragService = RAGService()
+        let context = ragService.retrieveRelevantChunks(for: userInput)
+        
+        do {
+            let stream = try await service.sendMessageWithRAG(userInput, context: context)
+            for try await chunk in stream {
+                messages[assistantIndex].content += chunk
+            }
         } catch {
             messages[assistantIndex].content = "에러 발생: \(error.localizedDescription)"
         }

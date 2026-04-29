@@ -162,4 +162,18 @@ class OpenAIService {
         let chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
         return chatResponse.choices.first?.message.content ?? ""
     }
+    
+    func sendMessageWithRAG(_ userMessage: String, context: String) async throws -> AsyncThrowingStream<String, Error> {
+        
+        let systemPrompt = """
+        당신은 보안/인증 전문가입니다.
+        아래 문서를 참고해서 답변하세요. 문서에 없는 내용은 "제공된 문서에 없는 내용입니다"라고 답하세요.
+        
+        [참고 문서]
+        \(context)
+        """
+        
+        return try await sendMessageStream(userMessage, systemPrompt: systemPrompt)
+    }
+    
 }
