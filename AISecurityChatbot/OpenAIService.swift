@@ -12,84 +12,50 @@ class OpenAIService {
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
     
     // MARK: - Codable 모델
-    struct ChatRequest: Codable {
-        let model: String
-        let messages: [Message]
-        
-        struct Message: Codable {
-            let role: String
-            let content: String
-        }
-    }
-    
     struct ChatResponse: Codable {
         let choices: [Choice]
-        
         struct Choice: Codable {
-            let message: ChatRequest.Message
+            let message: Message
+            struct Message: Codable {
+                let content: String
+            }
         }
     }
     
     struct StreamResponse: Codable {
         let choices: [StreamChoice]
-        
         struct StreamChoice: Codable {
             let delta: Delta
-            
             struct Delta: Codable {
                 let content: String?
             }
         }
     }
     
-    // MARK: - API 호출
-    func sendMessage(_ userMessage: String) async throws -> String {
+    // MARK: - 공통 요청 빌더
+    private func buildRequest(body: [String: Any]) throws -> URLRequest {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body = ChatRequest(
-            model: "gpt-4o-mini",
-            messages: [
-                .init(role: "system", content: "당신은 보안/인증 전문가입니다."),
-                .init(role: "user", content: userMessage)
-            ]
-        )
-        request.httpBody = try JSONEncoder().encode(body)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
-            print("Status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-            print("Error body: \(errorBody)")
-            throw URLError(.badServerResponse)
-        }
-        
-        let chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
-        return chatResponse.choices.first?.message.content ?? ""
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
     }
     
+    private func makeMessages(system: String, user: String) -> [[String: String]] {
+        [["role": "system", "content": system],
+         ["role": "user", "content": user]]
+    }
+    
+    // MARK: - API 함수들
     func sendMessageStream(_ userMessage: String, systemPrompt: String = "당신은 보안/인증 전문가입니다.") async throws -> AsyncThrowingStream<String, Error> {
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body: [String: Any] = [
+        let request = try buildRequest(body: [
             "model": "gpt-4o-mini",
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userMessage]
-            ],
+            "messages": makeMessages(system: systemPrompt, user: userMessage),
             "stream": true
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        ])
         
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
-        
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
@@ -99,23 +65,13 @@ class OpenAIService {
             Task {
                 do {
                     for try await line in bytes.lines {
-                        // "data: " 접두사 제거
                         guard line.hasPrefix("data: ") else { continue }
                         let jsonString = String(line.dropFirst(6))
+                        if jsonString == "[DONE]" { continuation.finish(); break }
                         
-                        // 스트림 종료 신호
-                        if jsonString == "[DONE]" {
-                            continuation.finish()
-                            break
-                        }
-                        
-                        // JSON 파싱
                         guard let data = jsonString.data(using: .utf8),
                               let streamResponse = try? JSONDecoder().decode(StreamResponse.self, from: data),
-                              let content = streamResponse.choices.first?.delta.content else {
-                            continue
-                        }
-                        
+                              let content = streamResponse.choices.first?.delta.content else { continue }
                         continuation.yield(content)
                     }
                 } catch {
@@ -126,45 +82,26 @@ class OpenAIService {
     }
     
     func askStructured(_ userMessage: String) async throws -> String {
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         let systemPrompt = """
         당신은 보안/인증 전문가입니다.
         반드시 아래 JSON 형식으로만 답하세요:
-        {
-            "term": "용어명",
-            "definition": "한 줄 정의",
-            "example": "실제 사용 예시",
-            "related_terms": ["관련용어1", "관련용어2"]
-        }
+        {"term": "용어명", "definition": "한 줄 정의", "example": "실제 사용 예시", "related_terms": ["관련용어1", "관련용어2"]}
         """
-        
-        let body: [String: Any] = [
+        let request = try buildRequest(body: [
             "model": "gpt-4o-mini",
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userMessage]
-            ],
+            "messages": makeMessages(system: systemPrompt, user: userMessage),
             "response_format": ["type": "json_object"]
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        ])
         
         let (data, response) = try await URLSession.shared.data(for: request)
-        
         guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+              httpResponse.statusCode == 200 else { throw URLError(.badServerResponse) }
         
         let chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
         return chatResponse.choices.first?.message.content ?? ""
     }
     
     func sendMessageWithRAG(_ userMessage: String, context: String) async throws -> AsyncThrowingStream<String, Error> {
-        
         let systemPrompt = """
         당신은 보안/인증 전문가입니다.
         아래 문서를 참고해서 답변하세요. 문서에 없는 내용은 "제공된 문서에 없는 내용입니다"라고 답하세요.
@@ -172,8 +109,6 @@ class OpenAIService {
         [참고 문서]
         \(context)
         """
-        
         return try await sendMessageStream(userMessage, systemPrompt: systemPrompt)
     }
-    
 }
