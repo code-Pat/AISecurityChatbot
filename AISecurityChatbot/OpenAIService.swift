@@ -42,16 +42,18 @@ class OpenAIService {
         return request
     }
     
-    private func makeMessages(system: String, user: String) -> [[String: String]] {
-        [["role": "system", "content": system],
-         ["role": "user", "content": user]]
+    private func makeMessages(system: String, history: [Message], user: String) -> [[String: String]] {
+        var messages: [[String: String]] = [["role": "system", "content": system]]
+        messages += history.map { ["role": $0.role, "content": $0.content] }
+        messages.append(["role": "user", "content": user])
+        return messages
     }
     
     // MARK: - API 함수들
-    func sendMessageStream(_ userMessage: String, systemPrompt: String = "당신은 보안/인증 전문가입니다.") async throws -> AsyncThrowingStream<String, Error> {
+    func sendMessageStream(_ userMessage: String, history: [Message] = [], systemPrompt: String = "당신은 보안/인증 전문가입니다.") async throws -> AsyncThrowingStream<String, Error> {
         let request = try buildRequest(body: [
             "model": "gpt-4o-mini",
-            "messages": makeMessages(system: systemPrompt, user: userMessage),
+            "messages": makeMessages(system: systemPrompt, history: history, user: userMessage),
             "stream": true
         ])
         
@@ -89,7 +91,7 @@ class OpenAIService {
         """
         let request = try buildRequest(body: [
             "model": "gpt-4o-mini",
-            "messages": makeMessages(system: systemPrompt, user: userMessage),
+            "messages": makeMessages(system: systemPrompt, history: [], user: userMessage),
             "response_format": ["type": "json_object"]
         ])
         
@@ -101,7 +103,7 @@ class OpenAIService {
         return chatResponse.choices.first?.message.content ?? ""
     }
     
-    func sendMessageWithRAG(_ userMessage: String, context: String) async throws -> AsyncThrowingStream<String, Error> {
+    func sendMessageWithRAG(_ userMessage: String, context: String, history: [Message] = []) async throws -> AsyncThrowingStream<String, Error> {
         let systemPrompt = """
         당신은 보안/인증 전문가입니다.
         아래 문서를 참고해서 답변하세요. 문서에 없는 내용은 "제공된 문서에 없는 내용입니다"라고 답하세요.
@@ -109,6 +111,6 @@ class OpenAIService {
         [참고 문서]
         \(context)
         """
-        return try await sendMessageStream(userMessage, systemPrompt: systemPrompt)
+        return try await sendMessageStream(userMessage, history: history, systemPrompt: systemPrompt)
     }
 }

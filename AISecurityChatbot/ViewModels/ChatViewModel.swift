@@ -42,10 +42,13 @@ class ChatViewModel: ObservableObject {
         messages.append(Message(role: "assistant", content: ""))
         let assistantIndex = messages.count - 1
         
+        // 히스토리: 마지막 빈 assistant 메시지 제외
+        let history = Array(messages.dropLast())
+        
         do {
             switch mode {
             case .normal:
-                let stream = try await openAIService.sendMessageStream(userInput)
+                let stream = try await openAIService.sendMessageStream(userInput, history: history)
                 for try await chunk in stream {
                     messages[assistantIndex].content += chunk
                 }
@@ -56,7 +59,7 @@ class ChatViewModel: ObservableObject {
                 
             case .rag:
                 let context = ragService.retrieveRelevantChunks(for: userInput)
-                let stream = try await openAIService.sendMessageWithRAG(userInput, context: context)
+                let stream = try await openAIService.sendMessageWithRAG(userInput, context: context, history: history)
                 for try await chunk in stream {
                     messages[assistantIndex].content += chunk
                 }
