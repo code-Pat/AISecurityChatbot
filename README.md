@@ -45,9 +45,9 @@ AISecurityChatbot/
 
 <br>
 
-## 학습 내용
+## 작업 내용
 
-**Phase 1. LLM API 통합** 8주 커리큘럼 중 실습 프로젝트입니다.
+**LLM API 통합** 프로젝트
 
 - `URLSession`으로 REST API 직접 호출 (외부 라이브러리 미사용)
 - SSE 파싱으로 스트리밍 응답 구현 (`AsyncThrowingStream`)
@@ -76,8 +76,3 @@ OPENAI_API_KEY = your_api_key_here
 
 <br>
 
-## 로드맵
-
-- [ ] Phase 2: Core ML / Vision Framework 연동
-- [ ] 신분증/QR 인식 → 인증 플로우 프로토타입
-- [ ] Phase 3: On-device AI + LLM API 결합 포트폴리오 앱
