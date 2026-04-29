@@ -37,6 +37,11 @@ struct ContentView: View {
                     Task { await sendMessage() }
                 }
                 .disabled(isLoading || inputText.isEmpty)
+                
+                Button("JSON 모드") {
+                    Task { await sendStructured() }
+                }
+                .disabled(isLoading || inputText.isEmpty)
             }
             .padding()
         }
@@ -57,6 +62,23 @@ struct ContentView: View {
             for try await chunk in stream {
                 messages[assistantIndex].content += chunk
             }
+        } catch {
+            messages[assistantIndex].content = "에러 발생: \(error.localizedDescription)"
+        }
+        isLoading = false
+    }
+    
+    func sendStructured() async {
+        let userInput = inputText
+        inputText = ""
+        messages.append((role: "user", content: userInput))
+        isLoading = true
+        messages.append((role: "assistant", content: ""))
+        let assistantIndex = messages.count - 1
+        
+        do {
+            let reply = try await service.askStructured(userInput)
+            messages[assistantIndex].content = reply
         } catch {
             messages[assistantIndex].content = "에러 발생: \(error.localizedDescription)"
         }
