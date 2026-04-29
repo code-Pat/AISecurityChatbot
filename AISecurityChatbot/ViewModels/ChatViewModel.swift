@@ -19,9 +19,14 @@ class ChatViewModel: ObservableObject {
     @Published var messages: [Message] = []
     @Published var inputText = ""
     @Published var isLoading = false
+    @Published var selectedMode: SendMode = .normal
     
     private let openAIService = OpenAIService()
     private let ragService = RAGService()
+    
+    func send() {
+        send(mode: selectedMode)
+    }
     
     func send(mode: SendMode = .normal) {
         guard !inputText.isEmpty else { return }
